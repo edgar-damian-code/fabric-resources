@@ -1,0 +1,187 @@
+--USE [Warehouse]
+
+CREATE   PROCEDURE [Transform].[usp_incremental_replace_dim_Date]
+ @Start_Date date
+,@End_Date date
+
+AS
+
+-------------------------------------------------------------------------------
+-- Author       Wipfli\Edgar Damian
+-- Created      01-Oct-2024
+-- Purpose      Populates Date Dimension(Warehouse Layer) based on Start & End Date parameters
+--				
+--              
+-- 
+-------------------------------------------------------------------------------
+-- Modification History
+--
+-- 01/01/0000  developer full name  
+--      A comprehensive description of the changes. The description may use as 
+--      many lines as needed.
+-------------------------------------------------------------------------------
+
+
+DECLARE @CurrentDate DATE = @Start_Date --'2023-03-01'
+DECLARE @EndDate DATE = @End_Date --'2023-05-01'
+
+IF OBJECT_ID('tempdb..#Dim_Date') IS NOT NULL DROP TABLE #Dim_Date
+CREATE TABLE #Dim_Date(
+--DECLARE  @Dim_Date TABLE(
+		[Date SK]						INT NOT NULL
+	,	[Date]							DATE NOT NULL
+	,	[Day]							SMALLINT NOT NULL
+	,	[Day of Week]					SMALLINT NOT NULL
+	,	[Day of Week Full Name]			VARCHAR(10) NOT NULL
+	,	[Day of Week Short Name]		CHAR(3) NOT NULL
+	,	[Day Of Month]					SMALLINT NOT NULL
+	,	[Day Of Year]					SMALLINT NOT NULL
+	,	[Week Of Month]					SMALLINT NOT NULL
+	,	[Week Of Year]					SMALLINT NOT NULL
+	,	[Month]							SMALLINT NOT NULL
+	,	[Month Full Name]				VARCHAR(10) NOT NULL
+	,	[Month Short Name]				CHAR(3) NOT NULL
+	,	[Quarter]						SMALLINT NOT NULL
+	,	[Quarter Short Name]			CHAR(3) NOT NULL
+	,	[Quarter Full Name]				CHAR(12) NOT NULL
+	,	[Year]							INT NOT NULL
+	,	[Year Month]					INT NOT NULL 
+	,	[Month Year Name]				VARCHAR(10) NOT NULL
+	,	[Fiscal Year]					INT NOT NULL			
+	,	[Fiscal Year Name]				VARCHAR(10) NOT NULL
+	,	[Fiscal Month]					INT NOT NULL	
+	,	[Fiscal Year Month]				VARCHAR(10) NOT NULL
+	,	[Fiscal Month Full Name]		VARCHAR(10) NOT NULL
+	,	[Fiscal Half Year Name]			VARCHAR(10) NOT NULL
+	,	[Fiscal Quarter]				VARCHAR(10) NOT NULL
+	,	[Fiscal Quarter Short Name]		VARCHAR(10) NOT NULL
+	,	[Fiscal Quarter Full Name]		VARCHAR(10) NOT NULL
+	,	[Is Weekend]					BIT NOT NULL
+	,	[Is Holiday]					BIT NOT NULL
+)
+
+
+WHILE @CurrentDate <= @EndDate
+BEGIN
+
+INSERT INTO #Dim_Date 
+(
+       [Date SK]					
+	  ,[Date]						
+	  ,[Day]						
+	  ,[Day of Week]				
+	  ,[Day of Week Full Name]		
+	  ,[Day of Week Short Name]	
+	  ,[Day Of Month]				
+	  ,[Day Of Year]				
+	  ,[Week Of Month]				
+	  ,[Week Of Year]				
+	  ,[Month]						
+	  ,[Month Full Name]			
+	  ,[Month Short Name]
+	  ,[Quarter]			
+	  ,[Quarter Short Name]
+	  ,[Quarter Full Name]	
+	  ,[Year]						
+	  ,[Year Month]				
+	  ,[Month Year Name]			
+	  ,[Fiscal Year]				
+	  ,[Fiscal Year Name]			
+	  ,[Fiscal Month]				
+	  ,[Fiscal Year Month]			
+	  ,[Fiscal Month Full Name]	
+	  ,[Fiscal Half Year Name]		
+	  ,[Fiscal Quarter]			
+	  ,[Fiscal Quarter Short Name]	
+	  ,[Fiscal Quarter Full Name]	
+	  ,[Is Weekend]				
+	  ,[Is Holiday]				
+)    
+
+--Fiscal Year is same as Calendar Year : Jan to Dec
+
+   SELECT 
+		[Date Key] = YEAR(@CurrentDate) * 10000 + MONTH(@CurrentDate) * 100 + DAY(@CurrentDate),
+		[DATE] = @CurrentDate,
+		[Day] = DAY(@CurrentDate),
+		[Day of Week] = DATEPART(dw, @CurrentDate),
+		[Day of Week Full Name] = DATENAME(dw, @CurrentDate),
+		[Day of Week Short Name] = (LEFT(DATENAME(dw, @CurrentDate), 3)),
+		[Day Of Month] = DAY(@CurrentDate),
+		[Day Of Year] = DATENAME(dy, @CurrentDate),
+		[Week Of Month] = DATEPART(WEEK, @CurrentDate) - DATEPART(WEEK, DATEADD(MM, DATEDIFF(MM, 0, @CurrentDate), 0)) + 1,
+		[Week Of Year] = DATEPART(wk, @CurrentDate),
+		[Month] = MONTH(@CurrentDate),
+		[Month Full Name] = DATENAME(mm, @CurrentDate),
+		[Month Short Name] = (LEFT(DATENAME(mm, @CurrentDate), 3)),
+        [Quarter] = DATENAME(qq, @CurrentDate),
+        [Quarter Short Name]	= CASE 
+			WHEN DATENAME(qq, @CurrentDate) = 1 --FY Jan to Dec until FY2020Sep
+			THEN 'Q1'
+			WHEN DATENAME(qq, @CurrentDate) = 2
+			THEN 'Q2'
+			WHEN DATENAME(qq, @CurrentDate) = 3
+			THEN 'Q3'
+			WHEN DATENAME(qq, @CurrentDate) = 4
+			THEN 'Q4'
+			END,
+		[Quarter Full Name]	= CASE 
+			WHEN DATENAME(qq, @CurrentDate) = 1
+			THEN 'Quarter 1'
+			WHEN DATENAME(qq, @CurrentDate) = 2
+			THEN 'Quarter 2'
+			WHEN DATENAME(qq, @CurrentDate) = 3
+			THEN 'Quarter 3'
+			WHEN DATENAME(qq, @CurrentDate) = 4
+			THEN 'Quarter 4'
+			END,
+		[Year] = YEAR(@CurrentDate),
+		[Year Month] = CAST(YEAR(@CurrentDate) AS VARCHAR) + RIGHT('0'+CAST(MONTH(@CurrentDate) AS VARCHAR),2),
+		[Month Year Name] = (LEFT(DATENAME(mm, @CurrentDate), 3)) +' '+ cast(YEAR(@CurrentDate) as varchar),
+		[Fiscal Year]			= YEAR(@CurrentDate),
+		[Fiscal Year Name]		= 'FY'+cast(YEAR(@CurrentDate) as varchar),
+		[Fiscal Month]		= MONTH(@CurrentDate),
+		[Fiscal Year Month]		= CAST(YEAR(@CurrentDate) AS VARCHAR) + '-' + CAST(MONTH(@CurrentDate) AS VARCHAR),
+		[Fiscal Month Full Name]		= (LEFT(DATENAME(mm, @CurrentDate), 3)) +'-FY'+ CAST(YEAR(@CurrentDate) AS VARCHAR) ,
+		[Fiscal Half Year Name]	= CASE WHEN MONTH(@CurrentDate)>6 THEN 'HY2' ELSE 'HY1' END,
+		[Fiscal Quarter]		= DATEPART(q, @CurrentDate),
+		[Fiscal Quarter Short Name]	= CASE 
+			WHEN DATENAME(qq, @CurrentDate) = 1 --FY Jan to Dec until FY2020Sep
+			THEN 'Q1'
+			WHEN DATENAME(qq, @CurrentDate) = 2
+			THEN 'Q2'
+			WHEN DATENAME(qq, @CurrentDate) = 3
+			THEN 'Q3'
+			WHEN DATENAME(qq, @CurrentDate) = 4
+			THEN 'Q4'
+			END,
+		[Fiscal Quarter Full Name]	= CASE 
+			WHEN DATENAME(qq, @CurrentDate) = 1
+			THEN 'Quarter 1'
+			WHEN DATENAME(qq, @CurrentDate) = 2
+			THEN 'Quarter 2'
+			WHEN DATENAME(qq, @CurrentDate) = 3
+			THEN 'Quarter 3'
+			WHEN DATENAME(qq, @CurrentDate) = 4
+			THEN 'Quarter 4'
+			END,
+		[Is Weekend] = CASE 
+			WHEN DATENAME(dw, @CurrentDate) = 'Sunday'
+			OR DATENAME(dw, @CurrentDate) = 'Saturday'
+			THEN 1
+			ELSE 0
+			END,
+		[Is Holiday] = CASE 
+			WHEN DATENAME(dw, @CurrentDate) = 'Sunday'
+			OR DATENAME(dw, @CurrentDate) = 'Saturday'
+			THEN 1
+			ELSE 0
+			END
+
+	SET @CurrentDate = DATEADD(DD, 1, @CurrentDate)
+END
+
+DELETE FROM [Transform].[dim_Date] WHERE [Date] BETWEEN @Start_Date AND @End_Date;
+
+
+INSERT INTO [Transform].[dim_Date] SELECT * FROM #Dim_Date

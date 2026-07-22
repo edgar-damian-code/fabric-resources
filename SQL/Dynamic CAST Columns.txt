@@ -1,0 +1,96 @@
+DECLARE @TableList TABLE (TableName NVARCHAR(128));
+
+INSERT INTO @TableList VALUES
+('Company'), ('Contact'), ('Employee'), ('SFA_Opportunity');
+
+DECLARE @TableName NVARCHAR(128);
+
+DECLARE table_cursor CURSOR FOR 
+SELECT TableName FROM @TableList ORDER BY TableName;
+
+OPEN table_cursor;
+FETCH NEXT FROM table_cursor INTO @TableName;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    PRINT '-- ========================================';
+    PRINT '-- Query for: ' + @TableName;
+    PRINT '-- ========================================';
+    PRINT 'SELECT';
+    
+    -- Print columns one at a time to avoid truncation
+    DECLARE @FirstColumn BIT = 1;
+    
+    DECLARE @ColumnName NVARCHAR(128);
+    DECLARE @DataType NVARCHAR(128);
+    DECLARE @MaxLength INT;
+    DECLARE @ColumnDef NVARCHAR(500);
+    
+    DECLARE column_cursor CURSOR FOR
+    SELECT 
+        c.name,
+        TYPE_NAME(c.user_type_id),
+        c.max_length
+    FROM sys.columns c
+    WHERE c.object_id = OBJECT_ID('dbo.' + @TableName)
+        AND TYPE_NAME(c.user_type_id) NOT IN ('timestamp', 'sql_variant', 'xml', 'hierarchyid', 'geometry', 'geography')
+        AND c.user_type_id = c.system_type_id
+    ORDER BY c.column_id;
+    
+    OPEN column_cursor;
+    FETCH NEXT FROM column_cursor INTO @ColumnName, @DataType, @MaxLength;
+    
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        -- Build the column definition
+        SET @ColumnDef = CASE 
+            -- Binary ID columns - convert to hex
+            WHEN @ColumnName LIKE '%_Id' AND @DataType IN ('binary', 'varbinary')
+            THEN 'CONVERT(VARCHAR(' + CAST(@MaxLength * 2 AS VARCHAR) + '), ' + QUOTENAME(@ColumnName) + ', 2) AS ' + QUOTENAME(@ColumnName + '_Hex')
+            
+            -- Other binary columns - convert to hex
+            WHEN @DataType IN ('binary', 'varbinary') AND @ColumnName NOT LIKE '%_Id'
+            THEN 'CONVERT(VARCHAR(' + CAST(@MaxLength * 2 AS VARCHAR) + '), ' + QUOTENAME(@ColumnName) + ', 2) AS ' + QUOTENAME(@ColumnName + '_Hex')
+            
+            -- Legacy text - convert to varchar(max)
+            WHEN @DataType = 'text'
+            THEN 'CAST(' + QUOTENAME(@ColumnName) + ' AS VARCHAR(MAX)) AS ' + QUOTENAME(@ColumnName)
+            
+            -- Legacy ntext - convert to nvarchar(max)
+            WHEN @DataType = 'ntext'
+            THEN 'CAST(' + QUOTENAME(@ColumnName) + ' AS NVARCHAR(MAX)) AS ' + QUOTENAME(@ColumnName)
+            
+            -- Legacy image - convert to varbinary(max)
+            WHEN @DataType = 'image'
+            THEN 'CAST(' + QUOTENAME(@ColumnName) + ' AS VARBINARY(MAX)) AS ' + QUOTENAME(@ColumnName)
+            
+            -- Regular columns - use as-is
+            ELSE QUOTENAME(@ColumnName)
+        END;
+        
+        -- Print with comma handling
+        IF @FirstColumn = 1
+        BEGIN
+            PRINT '    ' + @ColumnDef;
+            SET @FirstColumn = 0;
+        END
+        ELSE
+        BEGIN
+            PRINT '    ,' + @ColumnDef;
+        END
+        
+        FETCH NEXT FROM column_cursor INTO @ColumnName, @DataType, @MaxLength;
+    END;
+    
+    CLOSE column_cursor;
+    DEALLOCATE column_cursor;
+    
+    PRINT 'FROM dbo.' + QUOTENAME(@TableName);
+    PRINT '';
+    PRINT '';
+    
+    FETCH NEXT FROM table_cursor INTO @TableName;
+END;
+
+CLOSE table_cursor;
+DEALLOCATE table_cursor;
